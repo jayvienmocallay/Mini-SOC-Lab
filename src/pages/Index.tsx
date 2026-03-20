@@ -1,15 +1,40 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import SideNav from "@/components/SideNav";
 import HeroSection from "@/components/HeroSection";
 import SectionHeading from "@/components/SectionHeading";
 import DataTable from "@/components/DataTable";
 import CodeBlock from "@/components/CodeBlock";
 import DetectionCard from "@/components/DetectionCard";
-import { motion } from "framer-motion";
-import { FileText, Server, Database, Terminal, AlertTriangle, TestTube, Lock, BookOpen } from "lucide-react";
+import DetectionFilter, { FilterState } from "@/components/DetectionFilter";
+import DashboardSection from "@/components/DashboardSection";
+import MitreAttackMap from "@/components/MitreAttackMap";
+import NetworkDiagram from "@/components/NetworkDiagram";
+import ResponsePlaybook from "@/components/ResponsePlaybook";
+import SetupChecklist from "@/components/SetupChecklist";
+import SysmonConfig from "@/components/SysmonConfig";
+import { motion, AnimatePresence } from "framer-motion";
+import { FileText, Server, Database, Terminal, AlertTriangle, TestTube, Lock, BookOpen, BarChart3, ClipboardCheck, Crosshair, Network, ScrollText, ArrowUp } from "lucide-react";
+
+const allDetections = [
+  { ruleId: "DET-BF-WIN-001", name: "Windows RDP / Local Account Brute Force", severity: "HIGH" as const, category: "Brute Force", attack: "T1110.001", logSource: "Windows Security — Event ID 4625", triggerLogic: "≥ 5 Event ID 4625 (Logon Type 3 or 10) from same source IP within 60s" },
+  { ruleId: "DET-BF-LNX-001", name: "Linux SSH Brute Force — Multiple Auth Failures", severity: "HIGH" as const, category: "Brute Force", attack: "T1110.001", logSource: "/var/log/auth.log", triggerLogic: "≥ 10 SSH authentication failures from same source IP within 120 seconds" },
+  { ruleId: "DET-BF-WIN-002", name: "Successful Logon Following Brute Force", severity: "CRITICAL" as const, category: "Brute Force", attack: "T1110", triggerLogic: "Event ID 4624 from same IP that triggered DET-BF-WIN-001 within 300s" },
+  { ruleId: "DET-PS-001", name: "Encoded PowerShell Command Execution", severity: "HIGH" as const, category: "PS Abuse", attack: "T1059.001", logSource: "Sysmon Event 1 + PowerShell Event 4104", triggerLogic: "CommandLine contains '-enc', '-EncodedCommand', or '[Convert]::FromBase64String'" },
+  { ruleId: "DET-PS-002", name: "PowerShell Download Cradle / Fileless Attack", severity: "CRITICAL" as const, category: "PS Abuse", attack: "T1059.001, T1105", triggerLogic: "IEX/Invoke-Expression combined with DownloadString, DownloadFile, WebClient" },
+  { ruleId: "DET-PS-003", name: "Execution Policy Bypass", severity: "MEDIUM" as const, category: "PS Abuse", attack: "T1059.001, T1562.001", triggerLogic: "CommandLine contains -ExecutionPolicy Bypass or Set-ExecutionPolicy Unrestricted" },
+  { ruleId: "DET-PS-004", name: "AMSI Bypass Attempt Detected", severity: "CRITICAL" as const, category: "PS Abuse", attack: "T1562.001", triggerLogic: "Script Block containing amsiInitFailed, AmsiScanBuffer, or amsi.dll reflection patterns" },
+  { ruleId: "DET-PE-WIN-001", name: "User Added to Administrators Group", severity: "CRITICAL" as const, category: "Priv Esc", attack: "T1078.001, T1136", logSource: "Windows Security — Event 4728/4732", triggerLogic: "Event 4732 where Group_Name = 'Administrators' or Event 4728 where Group = 'Domain Admins'" },
+  { ruleId: "DET-PE-LNX-001", name: "Sudo to Root Shell", severity: "HIGH" as const, category: "Priv Esc", attack: "T1548.003", logSource: "/var/log/auth.log", triggerLogic: "COMMAND=/bin/bash or /bin/sh or su from sudo, or ≥3 sudo auth failures in 60s" },
+  { ruleId: "DET-PE-LNX-002", name: "SUID Binary Abuse", severity: "HIGH" as const, category: "Priv Esc", attack: "T1548.001", logSource: "auditd — EXECVE syscall", triggerLogic: "auid!=0 (non-root) AND euid=0 (effective root) — SUID escalation" },
+  { ruleId: "DET-PE-WIN-002", name: "Token Impersonation / SeDebugPrivilege", severity: "CRITICAL" as const, category: "Priv Esc", attack: "T1134.001", logSource: "Windows Security — Event 4672", triggerLogic: "SeDebugPrivilege by non-approved account" },
+  { ruleId: "DET-PE-WIN-003", name: "Scheduled Task by Non-Admin User", severity: "MEDIUM" as const, category: "Priv Esc", attack: "T1053.005", logSource: "Windows Security — Event 4698", triggerLogic: "Non-admin creates task with cmd.exe, powershell.exe, or mshta.exe" },
+];
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("hero");
+  const [filters, setFilters] = useState<FilterState>({ search: "", severity: "ALL", category: "ALL" });
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -24,13 +49,55 @@ const Index = () => {
     return () => observer.disconnect();
   }, []);
 
-  const scrollTo = (id: string) => {
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      setScrollProgress(scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0);
+      setShowBackToTop(scrollTop > 600);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollTo = useCallback((id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
+
+  const filteredDetections = useMemo(() => {
+    return allDetections.filter((d) => {
+      const matchSearch = filters.search === "" ||
+        d.ruleId.toLowerCase().includes(filters.search.toLowerCase()) ||
+        d.name.toLowerCase().includes(filters.search.toLowerCase()) ||
+        d.attack.toLowerCase().includes(filters.search.toLowerCase());
+      const matchSeverity = filters.severity === "ALL" || d.severity === filters.severity;
+      const matchCategory = filters.category === "ALL" || d.category === filters.category;
+      return matchSearch && matchSeverity && matchCategory;
+    });
+  }, [filters]);
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Reading progress bar */}
+      <div id="reading-progress" style={{ width: `${scrollProgress}%` }} />
+
       <SideNav activeSection={activeSection} onNavigate={scrollTo} />
+
+      {/* Back to top button */}
+      <AnimatePresence>
+        {showBackToTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="fixed bottom-6 right-6 z-50 w-10 h-10 rounded-xl glass flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shadow-lg"
+            title="Back to top"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <main className="lg:ml-64 relative">
         <div className="max-w-4xl mx-auto px-6 pb-20">
@@ -42,10 +109,10 @@ const Index = () => {
           {/* PURPOSE & SCOPE */}
           <section id="purpose">
             <SectionHeading id="purpose-heading" number="01" title="Purpose & Scope" icon={FileText} description="Document purpose, scope, and definitions" />
-            
+
             <div className="space-y-4 text-sm text-foreground/80 leading-relaxed">
               <p>This Software Requirements Specification (SRS) defines the functional and non-functional requirements for the <span className="text-primary font-semibold">Mini Security Operations Center (SOC) Home Lab</span>. The lab provides a controlled, isolated environment for Blue Team practitioners to practice log ingestion, detection engineering, threat hunting, and incident response workflows.</p>
-              
+
               <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">Functional Domains</h3>
               <div className="grid gap-2">
                 {[
@@ -55,9 +122,11 @@ const Index = () => {
                   "Threat detection rules for: Brute Force, PowerShell Abuse, and Privilege Escalation",
                   "Alert tuning, documentation, and response playbooks",
                 ].map((item, i) => (
-                  <motion.div key={i} className="flex items-start gap-3 p-3 rounded-md bg-card border border-border" initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
-                    <span className="text-primary font-mono text-xs mt-0.5">▸</span>
-                    <span className="text-xs font-mono">{item}</span>
+                  <motion.div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover" initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
+                    <span className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-primary font-mono text-[10px]">{i + 1}</span>
+                    </span>
+                    <span className="text-xs font-mono text-foreground/80">{item}</span>
                   </motion.div>
                 ))}
               </div>
@@ -93,7 +162,7 @@ const Index = () => {
           {/* INFRASTRUCTURE */}
           <section id="infrastructure">
             <SectionHeading id="infra-heading" number="02" title="Infrastructure Requirements" icon={Server} description="VM specifications, networking, and OS configuration" />
-            
+
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Virtual Machine Specifications</h3>
             <DataTable
               headers={["Spec", "Windows Endpoint", "Linux Endpoint", "SIEM Server"]}
@@ -109,21 +178,10 @@ const Index = () => {
 
             <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">Network Architecture</h3>
             <p className="text-sm text-foreground/80 mb-4">All VMs on a dedicated host-only network segment <span className="font-mono text-primary">192.168.56.0/24</span> with no routing to external networks.</p>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-              {[
-                { ip: "192.168.56.100", name: "SIEM Server", role: "Wazuh / Splunk" },
-                { ip: "192.168.56.10", name: "Windows EP", role: "Attack Target" },
-                { ip: "192.168.56.11", name: "Linux EP", role: "Attack Target" },
-                { ip: "192.168.56.1", name: "Host Machine", role: "Hypervisor GW" },
-              ].map((node, i) => (
-                <motion.div key={i} className="p-4 rounded-lg bg-card border border-border text-center" initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}>
-                  <div className="text-xs font-mono text-primary mb-1">{node.ip}</div>
-                  <div className="text-sm font-display font-semibold text-foreground">{node.name}</div>
-                  <div className="text-[10px] font-mono text-muted-foreground">{node.role}</div>
-                </motion.div>
-              ))}
-            </div>
+            <NetworkDiagram />
+
+            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">Sysmon Configuration</h3>
+            <SysmonConfig />
 
             <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">Linux VM — Wazuh Agent Install</h3>
             <CodeBlock title="wazuh-agent-install.sh">{`curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor > /usr/share/keyrings/wazuh.gpg
@@ -134,9 +192,15 @@ WAZUH_MANAGER='192.168.56.100' systemctl start wazuh-agent
 systemctl enable wazuh-agent`}</CodeBlock>
           </section>
 
+          {/* SETUP CHECKLISTS */}
+          <section id="setup">
+            <SectionHeading id="setup-heading" number="03" title="Setup Checklists" icon={ClipboardCheck} description="Interactive VM provisioning and configuration guides" />
+            <SetupChecklist />
+          </section>
+
           {/* LOG COLLECTION */}
           <section id="logs">
-            <SectionHeading id="logs-heading" number="03" title="Log Collection Requirements" icon={Database} description="Agent deployment, log sources, and forwarding rules" />
+            <SectionHeading id="logs-heading" number="04" title="Log Collection Requirements" icon={Database} description="Agent deployment, log sources, and forwarding rules" />
 
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Windows Log Sources</h3>
             <DataTable
@@ -171,9 +235,9 @@ systemctl enable wazuh-agent`}</CodeBlock>
                 ["REQ-LOG-05", "Buffer up to 1,000 events if SIEM unreachable"],
                 ["REQ-LOG-06", "All timestamps normalized to UTC"],
               ].map(([id, desc], i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-card border border-border">
-                  <span className="text-[10px] font-mono text-primary shrink-0 mt-0.5">{id}</span>
-                  <span className="text-xs text-foreground/80">{desc}</span>
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover">
+                  <span className="text-[9px] font-mono text-primary bg-primary/8 px-1.5 py-0.5 rounded-md shrink-0 mt-0.5">{id}</span>
+                  <span className="text-xs text-foreground/70">{desc}</span>
                 </div>
               ))}
             </div>
@@ -181,7 +245,7 @@ systemctl enable wazuh-agent`}</CodeBlock>
 
           {/* SIEM */}
           <section id="siem">
-            <SectionHeading id="siem-heading" number="04" title="SIEM Platform Requirements" icon={Terminal} description="Platform selection, deployment, and dashboard configuration" />
+            <SectionHeading id="siem-heading" number="05" title="SIEM Platform Requirements" icon={Terminal} description="Platform selection, deployment, and dashboard configuration" />
 
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Platform Comparison</h3>
             <DataTable
@@ -209,15 +273,28 @@ systemctl enable wazuh-agent`}</CodeBlock>
             />
           </section>
 
+          {/* DASHBOARDS */}
+          <section id="dashboards">
+            <SectionHeading id="dash-heading" number="06" title="Dashboard Mockups" icon={BarChart3} description="Security overview, authentication monitor, and agent health visualizations" />
+            <DashboardSection />
+          </section>
+
           {/* DETECTIONS */}
           <section id="detections">
-            <SectionHeading id="det-heading" number="05" title="Detection Engineering" icon={AlertTriangle} description="Rules for brute force, PowerShell abuse, and privilege escalation" />
+            <SectionHeading id="det-heading" number="07" title="Detection Engineering" icon={AlertTriangle} description="Rules for brute force, PowerShell abuse, and privilege escalation" />
 
-            <h3 className="text-lg font-display font-semibold text-foreground mb-4">Brute Force Detections</h3>
-            <div className="grid gap-4 mb-8">
-              <DetectionCard ruleId="DET-BF-WIN-001" name="Windows RDP / Local Account Brute Force" severity="HIGH" category="Brute Force" attack="T1110.001" logSource="Windows Security — Event ID 4625" triggerLogic="≥ 5 Event ID 4625 (Logon Type 3 or 10) from same source IP within 60s" />
-              <DetectionCard ruleId="DET-BF-LNX-001" name="Linux SSH Brute Force — Multiple Auth Failures" severity="HIGH" category="Brute Force" attack="T1110.001" logSource="/var/log/auth.log" triggerLogic="≥ 10 SSH authentication failures from same source IP within 120 seconds" />
-              <DetectionCard ruleId="DET-BF-WIN-002" name="Successful Logon Following Brute Force" severity="CRITICAL" category="Brute Force" attack="T1110" triggerLogic="Event ID 4624 from same IP that triggered DET-BF-WIN-001 within 300s" />
+            <DetectionFilter onFilterChange={setFilters} />
+
+            <div className="grid gap-4 mt-4 mb-8">
+              {filteredDetections.length > 0 ? (
+                filteredDetections.map((d) => (
+                  <DetectionCard key={d.ruleId} {...d} />
+                ))
+              ) : (
+                <div className="text-center py-8 text-sm font-mono text-muted-foreground">
+                  No detection rules match your filters.
+                </div>
+              )}
             </div>
 
             <CodeBlock title="Wazuh Rule — Windows Brute Force">{`<rule id="100101" level="10">
@@ -232,14 +309,6 @@ systemctl enable wazuh-agent`}</CodeBlock>
   </mitre>
 </rule>`}</CodeBlock>
 
-            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-4">PowerShell Abuse Detections</h3>
-            <div className="grid gap-4 mb-8">
-              <DetectionCard ruleId="DET-PS-001" name="Encoded PowerShell Command Execution" severity="HIGH" category="PS Abuse" attack="T1059.001" logSource="Sysmon Event 1 + PowerShell Event 4104" triggerLogic="CommandLine contains '-enc', '-EncodedCommand', or '[Convert]::FromBase64String'" />
-              <DetectionCard ruleId="DET-PS-002" name="PowerShell Download Cradle / Fileless Attack" severity="CRITICAL" category="PS Abuse" attack="T1059.001, T1105" triggerLogic="IEX/Invoke-Expression combined with DownloadString, DownloadFile, WebClient" />
-              <DetectionCard ruleId="DET-PS-003" name="Execution Policy Bypass" severity="MEDIUM" category="PS Abuse" attack="T1059.001, T1562.001" triggerLogic="CommandLine contains -ExecutionPolicy Bypass or Set-ExecutionPolicy Unrestricted" />
-              <DetectionCard ruleId="DET-PS-004" name="AMSI Bypass Attempt Detected" severity="CRITICAL" category="PS Abuse" attack="T1562.001" triggerLogic="Script Block containing amsiInitFailed, AmsiScanBuffer, or amsi.dll reflection patterns" />
-            </div>
-
             <CodeBlock title="Wazuh Rule — PS Download Cradle">{`<rule id="100202" level="14">
   <if_group>powershell_scriptblock</if_group>
   <field name="win.eventdata.scriptBlockText" type="pcre2">
@@ -253,14 +322,23 @@ systemctl enable wazuh-agent`}</CodeBlock>
   </mitre>
 </rule>`}</CodeBlock>
 
-            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-4">Privilege Escalation Detections</h3>
-            <div className="grid gap-4 mb-8">
-              <DetectionCard ruleId="DET-PE-WIN-001" name="User Added to Administrators Group" severity="CRITICAL" category="Priv Esc" attack="T1078.001, T1136" logSource="Windows Security — Event 4728/4732" triggerLogic="Event 4732 where Group_Name = 'Administrators' or Event 4728 where Group = 'Domain Admins'" />
-              <DetectionCard ruleId="DET-PE-LNX-001" name="Sudo to Root Shell" severity="HIGH" category="Priv Esc" attack="T1548.003" logSource="/var/log/auth.log" triggerLogic="COMMAND=/bin/bash or /bin/sh or su from sudo, or ≥3 sudo auth failures in 60s" />
-              <DetectionCard ruleId="DET-PE-LNX-002" name="SUID Binary Abuse" severity="HIGH" category="Priv Esc" attack="T1548.001" logSource="auditd — EXECVE syscall" triggerLogic="auid!=0 (non-root) AND euid=0 (effective root) — SUID escalation" />
-              <DetectionCard ruleId="DET-PE-WIN-002" name="Token Impersonation / SeDebugPrivilege" severity="CRITICAL" category="Priv Esc" attack="T1134.001" logSource="Windows Security — Event 4672" triggerLogic="SeDebugPrivilege by non-approved account" />
-              <DetectionCard ruleId="DET-PE-WIN-003" name="Scheduled Task by Non-Admin User" severity="MEDIUM" category="Priv Esc" attack="T1053.005" logSource="Windows Security — Event 4698" triggerLogic="Non-admin creates task with cmd.exe, powershell.exe, or mshta.exe" />
-            </div>
+            <CodeBlock title="Wazuh Rule — Admin Group Change">{`<rule id="100301" level="14">
+  <if_sid>18153</if_sid>
+  <field name="win.system.eventID">^4732$</field>
+  <field name="win.eventdata.targetUserName" type="pcre2">(?i)^Administrators$</field>
+  <description>CRITICAL: User added to local Administrators group</description>
+  <group>privilege_escalation,account_changes</group>
+  <mitre><id>T1078.001</id></mitre>
+</rule>`}</CodeBlock>
+
+            <CodeBlock title="Splunk SPL — Brute Force Detection">{`index=wineventlog EventCode=4625 Logon_Type IN (3, 10)
+| bucket _time span=60s
+| stats count as fail_count, values(Account_Name) as accounts
+    by _time, Source_Network_Address, host
+| where fail_count >= 5
+| eval alert="Brute Force Detected", severity="HIGH"
+| table _time, host, Source_Network_Address, accounts, fail_count, severity
+| sort - fail_count`}</CodeBlock>
 
             <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">Detection Rule Summary</h3>
             <DataTable
@@ -282,9 +360,15 @@ systemctl enable wazuh-agent`}</CodeBlock>
             />
           </section>
 
+          {/* RESPONSE PLAYBOOKS */}
+          <section id="playbooks">
+            <SectionHeading id="playbook-heading" number="08" title="Response Playbooks" icon={ScrollText} description="Incident response procedures for each detection category" />
+            <ResponsePlaybook />
+          </section>
+
           {/* TESTING */}
           <section id="testing">
-            <SectionHeading id="test-heading" number="06" title="Testing & Validation" icon={TestTube} description="Attack simulation scenarios and acceptance criteria" />
+            <SectionHeading id="test-heading" number="09" title="Testing & Validation" icon={TestTube} description="Attack simulation scenarios and acceptance criteria" />
 
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Attack Simulation Scenarios</h3>
             <DataTable
@@ -310,17 +394,35 @@ systemctl enable wazuh-agent`}</CodeBlock>
                 ["REQ-TEST-04", "All alerts include valid MITRE ATT&CK technique ID"],
                 ["REQ-TEST-05", "Detection logic reviewed and signed off before production"],
               ].map(([id, desc], i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-card border border-border">
-                  <span className="text-[10px] font-mono text-primary shrink-0 mt-0.5">{id}</span>
-                  <span className="text-xs text-foreground/80">{desc}</span>
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover">
+                  <span className="text-[9px] font-mono text-primary bg-primary/8 px-1.5 py-0.5 rounded-md shrink-0 mt-0.5">{id}</span>
+                  <span className="text-xs text-foreground/70">{desc}</span>
                 </div>
+              ))}
+            </div>
+
+            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">False Positive Baseline Testing</h3>
+            <div className="space-y-2">
+              {[
+                "Run the lab environment for 48 hours with no simulated attacks",
+                "Record all alerts generated during baseline period",
+                "For each false positive: document rule ID, trigger event, root cause, and tuning action",
+                "Adjust thresholds, allowlists, or rule conditions to reduce FP rate below 5% per 24h",
+                "Re-run baseline test for 24 hours to confirm tuning effectiveness",
+              ].map((item, i) => (
+                <motion.div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover" initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
+                  <span className="w-5 h-5 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-primary font-mono text-[10px] font-bold">{i + 1}</span>
+                  </span>
+                  <span className="text-xs font-mono text-foreground/70">{item}</span>
+                </motion.div>
               ))}
             </div>
           </section>
 
           {/* NON-FUNCTIONAL */}
           <section id="nonfunctional">
-            <SectionHeading id="nf-heading" number="07" title="Non-Functional Requirements" icon={Lock} description="Performance, security, and maintainability" />
+            <SectionHeading id="nf-heading" number="10" title="Non-Functional Requirements" icon={Lock} description="Performance, security, and maintainability" />
 
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Performance</h3>
             <DataTable
@@ -343,9 +445,11 @@ systemctl enable wazuh-agent`}</CodeBlock>
                 "Host-only adapter must never be bridged to physical network",
                 "PowerShell transcript logs encrypted at rest if containing decoded payloads",
               ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-card border border-border">
-                  <span className="text-primary font-mono text-xs mt-0.5">▸</span>
-                  <span className="text-xs text-foreground/80">{item}</span>
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover">
+                  <span className="w-5 h-5 rounded-md bg-severity-critical/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <Lock className="w-3 h-3 text-severity-critical/60" />
+                  </span>
+                  <span className="text-xs text-foreground/70">{item}</span>
                 </div>
               ))}
             </div>
@@ -359,9 +463,9 @@ systemctl enable wazuh-agent`}</CodeBlock>
                 "Rule files stored in Git, tagged with SRS version",
                 "Annual review aligned with MITRE ATT&CK updates",
               ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-card border border-border">
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border card-hover">
                   <span className="text-primary font-mono text-xs mt-0.5">▸</span>
-                  <span className="text-xs text-foreground/80">{item}</span>
+                  <span className="text-xs text-foreground/70">{item}</span>
                 </div>
               ))}
             </div>
@@ -369,7 +473,7 @@ systemctl enable wazuh-agent`}</CodeBlock>
 
           {/* APPENDIX */}
           <section id="appendix">
-            <SectionHeading id="app-heading" number="08" title="Appendices" icon={BookOpen} description="Event ID reference and MITRE ATT&CK coverage map" />
+            <SectionHeading id="app-heading" number="11" title="Appendices" icon={BookOpen} description="Event ID reference, MITRE ATT&CK matrix, and references" />
 
             <h3 className="text-lg font-display font-semibold text-foreground mb-3">Key Windows Event IDs</h3>
             <DataTable
@@ -392,44 +496,39 @@ systemctl enable wazuh-agent`}</CodeBlock>
               ]}
             />
 
-            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">MITRE ATT&CK Coverage Map</h3>
-            <DataTable
-              headers={["Tactic", "Technique", "Sub-technique", "Covered By"]}
-              rows={[
-                ["Credential Access", "T1110", "T1110.001 Password Guessing", "DET-BF-WIN-001, DET-BF-LNX-001"],
-                ["Execution", "T1059", "T1059.001 PowerShell", "DET-PS-001, DET-PS-002, DET-PS-003"],
-                ["Defense Evasion", "T1027", "T1027.010 Command Obfuscation", "DET-PS-001"],
-                ["Defense Evasion", "T1562", "T1562.001 Disable/Modify Tools", "DET-PS-004"],
-                ["Privilege Escalation", "T1078", "T1078.001 Local Accounts", "DET-PE-WIN-001"],
-                ["Privilege Escalation", "T1134", "T1134.001 Token Impersonation", "DET-PE-WIN-002"],
-                ["Privilege Escalation", "T1548", "T1548.001 Setuid/Setgid", "DET-PE-LNX-002"],
-                ["Privilege Escalation", "T1548", "T1548.003 Sudo Caching", "DET-PE-LNX-001"],
-                ["Persistence", "T1053", "T1053.005 Scheduled Task", "DET-PE-WIN-003"],
-                ["Lateral Movement", "T1105", "Ingress Tool Transfer", "DET-PS-002"],
-              ]}
-            />
+            <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">MITRE ATT&CK Coverage Matrix</h3>
+            <MitreAttackMap />
 
             <h3 className="text-lg font-display font-semibold text-foreground mt-8 mb-3">References</h3>
-            <div className="space-y-2 mb-8">
+            <div className="space-y-1.5 mb-8">
               {[
                 "MITRE ATT&CK Framework v14 — https://attack.mitre.org",
                 "Wazuh 4.x Documentation — https://documentation.wazuh.com",
                 "SwiftOnSecurity Sysmon Config — https://github.com/SwiftOnSecurity/sysmon-config",
                 "Florian Roth auditd Rules — https://github.com/Neo23x0/auditd",
                 "Splunk Free Documentation — https://docs.splunk.com",
+                "NIST SP 800-92: Guide to Computer Security Log Management",
+                "CIS Benchmarks — Windows 10, Ubuntu 22.04",
+                "Sigma Rules Repository — https://github.com/SigmaHQ/sigma",
               ].map((ref, i) => (
-                <div key={i} className="flex items-start gap-3 p-2 rounded-md">
-                  <span className="text-primary font-mono text-xs mt-0.5">{i + 1}.</span>
-                  <span className="text-xs font-mono text-muted-foreground">{ref}</span>
+                <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-card/50 transition-colors">
+                  <span className="w-5 h-5 rounded-md bg-primary/8 flex items-center justify-center shrink-0 text-primary font-mono text-[10px]">{i + 1}</span>
+                  <span className="text-xs font-mono text-muted-foreground/80">{ref}</span>
                 </div>
               ))}
             </div>
           </section>
 
           {/* Footer */}
-          <div className="mt-16 pt-8 border-t border-border text-center">
-            <p className="text-[10px] font-mono text-muted-foreground">
-              Blue Team Security Operations • Internal Use Only • SRS-SOC-2026-001 v1.0
+          <div className="mt-20 pt-8 border-t border-border/50 text-center space-y-3">
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-primary/30 animate-pulse-glow" />
+              <p className="text-[10px] font-mono text-muted-foreground/60">
+                Blue Team Security Operations &bull; Internal Use Only
+              </p>
+            </div>
+            <p className="text-[9px] font-mono text-muted-foreground/30">
+              SRS-SOC-2026-001 v1.0 &bull; March 2026
             </p>
           </div>
         </div>
