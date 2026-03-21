@@ -1,0 +1,106 @@
+<!--
+  Mini SOC Lab — Privilege Escalation Detection Rules
+  SRS: SRS-SOC-2026-001 v1.0
+  Deploy to: /var/ossec/etc/rules/local_rules.xml (append)
+  Requires: Wazuh 4.x Manager
+-->
+
+<group name="mini_soc_privesc,">
+
+  <!-- DET-PE-WIN-001: User Added to Local Administrators Group
+       MITRE ATT&CK: T1078.001, T1136
+       Severity: CRITICAL (level 14)
+       Trigger: Event 4732 where target group is Administrators
+       False Positives: Legitimate IT provisioning — correlate with Event 4720 and change tickets
+  -->
+  <rule id="100301" level="14">
+    <if_sid>18153</if_sid>
+    <field name="win.system.eventID">^4732$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^Administrators$</field>
+    <description>DET-PE-WIN-001: CRITICAL — User added to local Administrators group</description>
+    <group>privilege_escalation,account_changes,persistence</group>
+    <mitre>
+      <id>T1078.001</id>
+      <id>T1136</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PE-WIN-001b: User Added to Domain Admins Group
+       Same rule for domain-level group membership changes (Event 4728)
+  -->
+  <rule id="100302" level="14">
+    <if_sid>18150</if_sid>
+    <field name="win.system.eventID">^4728$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^(Domain Admins|Enterprise Admins)$</field>
+    <description>DET-PE-WIN-001b: CRITICAL — User added to Domain/Enterprise Admins group</description>
+    <group>privilege_escalation,account_changes,persistence</group>
+    <mitre>
+      <id>T1078.001</id>
+      <id>T1136</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PE-LNX-001: Sudo Privilege Escalation to Root Shell
+       MITRE ATT&CK: T1548.003
+       Severity: HIGH (level 12)
+       Trigger: sudo used to spawn /bin/bash, /bin/sh, or su
+  -->
+  <rule id="100311" level="12">
+    <if_sid>5402</if_sid>
+    <match>COMMAND=/bin/bash|COMMAND=/bin/sh|COMMAND=/usr/bin/su|COMMAND=/bin/su</match>
+    <description>DET-PE-LNX-001: sudo used to spawn root shell — possible privilege escalation</description>
+    <group>privilege_escalation,sudo_abuse</group>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PE-LNX-001b: Repeated sudo Authentication Failures
+       Trigger: ≥3 sudo auth failures from same user within 60s
+  -->
+  <rule id="100312" level="10" frequency="3" timeframe="60">
+    <if_matched_sid>5401</if_matched_sid>
+    <same_user />
+    <description>DET-PE-LNX-001b: Repeated sudo authentication failures from same user (3+ in 60s)</description>
+    <group>authentication_failures,brute_force,sudo_abuse</group>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PE-WIN-002: Token Impersonation / SeDebugPrivilege Abuse
+       MITRE ATT&CK: T1134, T1134.001
+       Severity: CRITICAL (level 14)
+       Trigger: Event 4672 with SeDebugPrivilege by non-system account
+       Allowlist: SYSTEM, LOCAL SERVICE, NETWORK SERVICE
+  -->
+  <rule id="100321" level="14">
+    <if_sid>18100</if_sid>
+    <field name="win.system.eventID">^4672$</field>
+    <field name="win.eventdata.privilegeList" type="pcre2">SeDebugPrivilege</field>
+    <field name="win.eventdata.subjectUserName" type="pcre2" negate="yes">(?i)^(SYSTEM|LOCAL SERVICE|NETWORK SERVICE|DWM-\d+|UMFD-\d+)$</field>
+    <description>DET-PE-WIN-002: CRITICAL — SeDebugPrivilege assigned to non-system account</description>
+    <group>privilege_escalation,token_manipulation</group>
+    <mitre>
+      <id>T1134</id>
+      <id>T1134.001</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PE-WIN-003: Scheduled Task Created by Non-Admin User
+       MITRE ATT&CK: T1053.005
+       Severity: MEDIUM (level 8)
+       Trigger: Event 4698 where task content contains suspicious executables
+  -->
+  <rule id="100331" level="8">
+    <if_sid>18128</if_sid>
+    <field name="win.system.eventID">^4698$</field>
+    <field name="win.eventdata.taskContent" type="pcre2">(?i)(cmd\.exe|powershell\.exe|wscript\.exe|cscript\.exe|mshta\.exe)</field>
+    <description>DET-PE-WIN-003: Scheduled task created with suspicious executable payload</description>
+    <group>privilege_escalation,persistence,scheduled_task</group>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+  </rule>
+
+</group>

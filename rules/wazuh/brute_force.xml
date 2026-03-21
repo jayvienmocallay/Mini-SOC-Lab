@@ -1,0 +1,67 @@
+<!--
+  Mini SOC Lab — Brute Force Detection Rules
+  SRS: SRS-SOC-2026-001 v1.0
+  Deploy to: /var/ossec/etc/rules/local_rules.xml (append)
+  Requires: Wazuh 4.x Manager
+-->
+
+<group name="mini_soc_brute_force,">
+
+  <!-- DET-BF-WIN-001: Windows RDP / Local Account Brute Force
+       MITRE ATT&CK: T1110, T1110.001
+       Severity: HIGH (level 10)
+       Trigger: ≥5 Event ID 4625 (Logon Type 3 or 10) from same source IP within 60s
+       False Positives: Misconfigured service accounts, users forgetting passwords
+       Tuning: Add known service accounts to <same_user /> exclusion list
+  -->
+  <rule id="100101" level="10" frequency="5" timeframe="60">
+    <if_matched_sid>60122</if_matched_sid>
+    <same_source_ip />
+    <same_user />
+    <description>DET-BF-WIN-001: Windows Brute Force — Multiple failed logons from same IP (5+ in 60s)</description>
+    <options>no_full_log</options>
+    <group>authentication_failures,brute_force,pci_dss_10.2.4,pci_dss_10.2.5,gpg13_7.1,gdpr_IV_35.7.d,hipaa_164.312.b,nist_800_53_AU.14,nist_800_53_AC.7,tsc_CC6.1,tsc_CC6.8,tsc_CC7.2,tsc_CC7.3</group>
+    <mitre>
+      <id>T1110</id>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-BF-WIN-002: Successful Logon Following Brute Force
+       MITRE ATT&CK: T1110
+       Severity: CRITICAL (level 14)
+       Trigger: Event 4624 from same source IP that triggered DET-BF-WIN-001 within 300s
+       This is a CHAINED rule — fires only after 100101 already triggered
+       A successful logon after repeated failures strongly indicates credential compromise
+  -->
+  <rule id="100102" level="14" timeframe="300">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_source_ip />
+    <field name="win.system.eventID">^4624$</field>
+    <description>DET-BF-WIN-002: CRITICAL — Successful logon after brute force activity from same IP</description>
+    <group>authentication_success,brute_force,credential_compromise</group>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-BF-LNX-001: Linux SSH Brute Force
+       MITRE ATT&CK: T1110, T1110.001
+       Severity: HIGH (level 10)
+       Trigger: ≥10 SSH auth failures from same source IP within 120s
+       Parent rule 5720: sshd auth failure
+       False Positives: Automated backup agents, misconfigured SSH keys
+       Tuning: Allowlist known management IPs
+  -->
+  <rule id="100110" level="10" frequency="10" timeframe="120">
+    <if_matched_sid>5720</if_matched_sid>
+    <same_source_ip />
+    <description>DET-BF-LNX-001: Linux SSH Brute Force — 10+ failures from same IP in 120s</description>
+    <group>authentication_failures,brute_force,pci_dss_10.2.4,pci_dss_10.2.5</group>
+    <mitre>
+      <id>T1110</id>
+      <id>T1110.001</id>
+    </mitre>
+  </rule>
+
+</group>

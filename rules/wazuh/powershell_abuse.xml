@@ -1,0 +1,82 @@
+<!--
+  Mini SOC Lab — PowerShell Abuse Detection Rules
+  SRS: SRS-SOC-2026-001 v1.0
+  Deploy to: /var/ossec/etc/rules/local_rules.xml (append)
+  Requires: Wazuh 4.x Manager + Sysmon + PowerShell Script Block Logging
+-->
+
+<group name="mini_soc_powershell,">
+
+  <!-- DET-PS-001: Encoded PowerShell Command Execution
+       MITRE ATT&CK: T1059.001, T1027
+       Severity: HIGH (level 12)
+       Trigger: Sysmon Event 1 where powershell.exe runs with encoded command flags
+       False Positives: Enterprise software (SCCM), admin scripts using encoding
+       Tuning: Correlate with parent process — encoding from explorer.exe/cmd.exe is higher risk
+  -->
+  <rule id="100201" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(-enc\s|-EncodedCommand\s|-e\s|-ec\s|\[Convert\]::FromBase64String)</field>
+    <description>DET-PS-001: PowerShell encoded command execution detected</description>
+    <group>powershell_abuse,defense_evasion,execution</group>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1027</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PS-002: PowerShell Download Cradle / Fileless Malware
+       MITRE ATT&CK: T1059.001, T1105, T1027.010
+       Severity: CRITICAL (level 14)
+       Trigger: Script Block containing IEX/Invoke-Expression + DownloadString/WebClient
+       This indicates in-memory code execution from a remote source
+  -->
+  <rule id="100202" level="14">
+    <if_group>powershell_scriptblock</if_group>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(IEX|Invoke-Expression|iex).{0,200}(DownloadString|DownloadFile|WebClient|HttpClient|Invoke-WebRequest|wget|curl)</field>
+    <description>DET-PS-002: CRITICAL — PowerShell download cradle detected — possible fileless attack</description>
+    <group>powershell_abuse,fileless_malware,execution,command_and_control</group>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1105</id>
+      <id>T1027.010</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PS-003: PowerShell Execution Policy Bypass
+       MITRE ATT&CK: T1059.001, T1562.001
+       Severity: MEDIUM (level 8)
+       Trigger: CommandLine contains execution policy bypass flags
+       False Positives: IT admin scripts that explicitly bypass policy — common in automation
+       Tuning: Correlate with user context and parent process
+  -->
+  <rule id="100203" level="8">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(-ExecutionPolicy\s+(Bypass|Unrestricted)|-ep\s+(bypass|unrestricted)|Set-ExecutionPolicy\s+(Unrestricted|Bypass))</field>
+    <description>DET-PS-003: PowerShell execution policy bypass detected</description>
+    <group>powershell_abuse,defense_evasion</group>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1562.001</id>
+    </mitre>
+  </rule>
+
+  <!-- DET-PS-004: AMSI Bypass Attempt
+       MITRE ATT&CK: T1562.001
+       Severity: CRITICAL (level 14)
+       Trigger: Script Block containing AMSI bypass patterns
+       These patterns are used to disable Windows Antimalware Scan Interface
+  -->
+  <rule id="100204" level="14">
+    <if_group>powershell_scriptblock</if_group>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(amsiInitFailed|AmsiScanBuffer|amsi\.dll|SetValue.*AmsiEnable|\[Ref\]\.Assembly\.GetType.*AMSI|Runtime\.InteropServices\.Marshal.*Copy.*amsi)</field>
+    <description>DET-PS-004: CRITICAL — AMSI bypass attempt detected — antimalware evasion</description>
+    <group>powershell_abuse,defense_evasion,impair_defenses</group>
+    <mitre>
+      <id>T1562.001</id>
+    </mitre>
+  </rule>
+
+</group>
