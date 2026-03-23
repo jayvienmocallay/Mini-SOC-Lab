@@ -1,0 +1,88 @@
+# Mini SOC Lab — auditd Rules
+# SRS: SRS-SOC-2026-001 v1.0
+# Based on Florian Roth audit rules baseline
+# Deploy to: /etc/audit/rules.d/audit.rules
+# Reload: auditctl -R /etc/audit/rules.d/audit.rules
+
+# Remove existing rules
+-D
+
+# Set buffer size (increase for high-event environments)
+-b 8192
+
+# Failure mode: 1 = printk, 2 = panic
+-f 1
+
+# ── Identity / Authentication ────────────────────────────────────────
+
+# Monitor /etc/passwd, /etc/shadow, /etc/group, /etc/gshadow
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k identity
+-w /etc/sudoers.d/ -p wa -k identity
+
+# PAM configuration changes
+-w /etc/pam.d/ -p wa -k pam
+
+# SSH configuration
+-w /etc/ssh/sshd_config -p wa -k sshd_config
+
+# ── Privilege Escalation ─────────────────────────────────────────────
+
+# Monitor setuid/setgid — DET-PE-LNX-002 support
+-a always,exit -F arch=b64 -S setuid -S setgid -S setreuid -S setregid -k privilege_escalation
+-a always,exit -F arch=b32 -S setuid -S setgid -S setreuid -S setregid -k privilege_escalation
+
+# Monitor su and sudo usage — DET-PE-LNX-001 support
+-w /bin/su -p x -k privilege_escalation
+-w /usr/bin/sudo -p x -k privilege_escalation
+-w /usr/bin/sudoedit -p x -k privilege_escalation
+
+# SUID/SGID binary execution (non-root user executing as root)
+-a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=4294967295 -k suid_escalation
+-a always,exit -F arch=b32 -S execve -F euid=0 -F auid>=1000 -F auid!=4294967295 -k suid_escalation
+
+# ── Process Execution ────────────────────────────────────────────────
+
+# Monitor all process execution
+-a always,exit -F arch=b64 -S execve -k process_execution
+-a always,exit -F arch=b32 -S execve -k process_execution
+
+# ── Network ──────────────────────────────────────────────────────────
+
+# Socket operations
+-a always,exit -F arch=b64 -S socket -S connect -S accept -k network_activity
+-a always,exit -F arch=b32 -S socket -S connect -S accept -k network_activity
+
+# ── File Operations ──────────────────────────────────────────────────
+
+# Temp directory monitoring
+-w /tmp -p x -k tmp_exec
+-w /var/tmp -p x -k tmp_exec
+
+# Cron jobs
+-w /etc/cron.d/ -p wa -k cron
+-w /etc/cron.daily/ -p wa -k cron
+-w /etc/cron.hourly/ -p wa -k cron
+-w /etc/crontab -p wa -k cron
+-w /var/spool/cron/ -p wa -k cron
+
+# Systemd service files
+-w /etc/systemd/system/ -p wa -k systemd
+-w /usr/lib/systemd/system/ -p wa -k systemd
+
+# ── Kernel Module Loading ────────────────────────────────────────────
+
+-a always,exit -F arch=b64 -S init_module -S finit_module -k kernel_module
+-a always,exit -F arch=b32 -S init_module -S finit_module -k kernel_module
+
+# ── Log Tampering ────────────────────────────────────────────────────
+
+-w /var/log/auth.log -p wa -k log_tampering
+-w /var/log/syslog -p wa -k log_tampering
+-w /var/log/audit/ -p wa -k log_tampering
+
+# Make the configuration immutable (requires reboot to change)
+-e 2
