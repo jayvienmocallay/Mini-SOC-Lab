@@ -1,0 +1,133 @@
+<!--
+  Mini SOC Lab — Sysmon Configuration
+  SRS: SRS-SOC-2026-001 v1.0
+
+  Based on SwiftOnSecurity/sysmon-config baseline with additions for:
+  - Full CommandLine capture on ProcessCreate
+  - NetworkConnect for outbound monitoring
+  - ImageLoad for DLL injection
+  - ProcessAccess for LSASS credential dumping
+  - Monitored processes: PowerShell, cmd, wscript, cscript, mshta
+
+  Deploy: sysmon64.exe -accepteula -i sysmonconfig.xml
+  Update: sysmon64.exe -c sysmonconfig.xml
+-->
+<Sysmon schemaversion="4.90">
+
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation/>
+
+  <EventFiltering>
+
+    <!-- Event ID 1: Process Create — Full CommandLine capture -->
+    <RuleGroup name="ProcessCreate" groupRelation="or">
+      <ProcessCreate onmatch="include">
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">pwsh.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">wscript.exe</Image>
+        <Image condition="end with">cscript.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <Image condition="end with">bitsadmin.exe</Image>
+        <Image condition="end with">msiexec.exe</Image>
+        <Image condition="end with">schtasks.exe</Image>
+        <Image condition="end with">net.exe</Image>
+        <Image condition="end with">net1.exe</Image>
+        <Image condition="end with">whoami.exe</Image>
+        <Image condition="end with">nltest.exe</Image>
+        <Image condition="end with">tasklist.exe</Image>
+        <Image condition="end with">systeminfo.exe</Image>
+        <CommandLine condition="contains">-enc</CommandLine>
+        <CommandLine condition="contains">-EncodedCommand</CommandLine>
+        <CommandLine condition="contains">FromBase64String</CommandLine>
+        <CommandLine condition="contains">DownloadString</CommandLine>
+        <CommandLine condition="contains">DownloadFile</CommandLine>
+        <CommandLine condition="contains">Invoke-Expression</CommandLine>
+        <CommandLine condition="contains">IEX</CommandLine>
+        <CommandLine condition="contains">-ExecutionPolicy Bypass</CommandLine>
+        <ParentImage condition="end with">explorer.exe</ParentImage>
+        <ParentImage condition="end with">winword.exe</ParentImage>
+        <ParentImage condition="end with">excel.exe</ParentImage>
+        <ParentImage condition="end with">outlook.exe</ParentImage>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- Event ID 3: Network Connect — Outbound monitoring -->
+    <RuleGroup name="NetworkConnect" groupRelation="or">
+      <NetworkConnect onmatch="include">
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">wscript.exe</Image>
+        <Image condition="end with">cscript.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <DestinationPort condition="is">443</DestinationPort>
+        <DestinationPort condition="is">80</DestinationPort>
+        <DestinationPort condition="is">4444</DestinationPort>
+        <DestinationPort condition="is">8080</DestinationPort>
+        <DestinationPort condition="is">8443</DestinationPort>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- Event ID 7: Image Load — DLL injection detection -->
+    <RuleGroup name="ImageLoad" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <ImageLoaded condition="end with">amsi.dll</ImageLoaded>
+        <ImageLoaded condition="end with">clr.dll</ImageLoaded>
+        <ImageLoaded condition="end with">clrjit.dll</ImageLoaded>
+        <ImageLoaded condition="end with">mscoree.dll</ImageLoaded>
+        <ImageLoaded condition="end with">mscorlib.dll</ImageLoaded>
+        <ImageLoaded condition="contains">System.Management.Automation</ImageLoaded>
+        <Signed condition="is">false</Signed>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- Event ID 10: Process Access — LSASS credential dumping detection -->
+    <RuleGroup name="ProcessAccess" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="end with">lsass.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- Event ID 11: File Create -->
+    <RuleGroup name="FileCreate" groupRelation="or">
+      <FileCreate onmatch="include">
+        <TargetFilename condition="contains">\Startup\</TargetFilename>
+        <TargetFilename condition="contains">\Start Menu\</TargetFilename>
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.vbs</TargetFilename>
+        <TargetFilename condition="end with">.hta</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- Event ID 12-14: Registry events -->
+    <RuleGroup name="RegistryEvent" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">CurrentVersion\RunOnce</TargetObject>
+        <TargetObject condition="contains">Policies\Microsoft\Windows\PowerShell</TargetObject>
+        <TargetObject condition="contains">Windows Defender</TargetObject>
+        <TargetObject condition="contains">AMSI\Providers</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- Event ID 22: DNS Query -->
+    <RuleGroup name="DnsQuery" groupRelation="or">
+      <DnsQuery onmatch="include">
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+      </DnsQuery>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>
