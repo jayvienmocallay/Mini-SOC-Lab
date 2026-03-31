@@ -10,6 +10,38 @@
 
 import { env } from "@/config/environment";
 
+const WAZUH_PASSWORD_KEY = "wazuh_pass";
+
+export type WazuhErrorCode =
+  | "AUTH_MISSING"
+  | "AUTH_FAILED"
+  | "TIMEOUT"
+  | "NETWORK"
+  | "API_ERROR"
+  | "RESPONSE_INVALID"
+  | "UNKNOWN";
+
+export interface WazuhApiErrorInfo {
+  code: WazuhErrorCode;
+  message: string;
+  status?: number;
+  operation?: string;
+}
+
+class WazuhApiError extends Error {
+  code: WazuhErrorCode;
+  status?: number;
+  operation?: string;
+
+  constructor(info: WazuhApiErrorInfo) {
+    super(info.message);
+    this.name = "WazuhApiError";
+    this.code = info.code;
+    this.status = info.status;
+    this.operation = info.operation;
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface WazuhAgent {
@@ -63,29 +95,135 @@ export interface AgentHealth {
 // ── Internal helpers ─────────────────────────────────────────────────
 
 let _token: string | null = null;
+let _lastError: WazuhApiErrorInfo | null = null;
+
+function setLastError(error: WazuhApiErrorInfo | null) {
+  _lastError = error;
+}
+
+function toErrorInfo(error: unknown): WazuhApiErrorInfo {
+  if (error instanceof WazuhApiError) {
+    return {
+      code: error.code,
+      message: error.message,
+      status: error.status,
+      operation: error.operation,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: "UNKNOWN",
+      message: error.message,
+    };
+  }
+
+  return {
+    code: "UNKNOWN",
+    message: "Unexpected Wazuh API error",
+  };
+}
+
+function getWazuhPassword(): string {
+  return sessionStorage.getItem(WAZUH_PASSWORD_KEY) || "";
+}
+
+async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), env.wazuhRequestTimeout);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new WazuhApiError({
+        code: "TIMEOUT",
+        message: `Wazuh request timed out after ${env.wazuhRequestTimeout}ms`,
+      });
+    }
+
+    throw new WazuhApiError({
+      code: "NETWORK",
+      message: "Network error while calling Wazuh API",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function authenticate(): Promise<string> {
   if (_token) return _token;
-  const res = await fetch(`${env.wazuhApiUrl}/security/user/authenticate`, {
+  const password = getWazuhPassword();
+  if (!password) {
+    throw new WazuhApiError({
+      code: "AUTH_MISSING",
+      message: "Wazuh password is not set. Add credentials to connect.",
+      operation: "authenticate",
+    });
+  }
+
+  const res = await fetchWithTimeout(`${env.wazuhApiUrl}/security/user/authenticate`, {
     method: "POST",
     headers: {
-      Authorization: `Basic ${btoa(`${env.wazuhApiUser}:${sessionStorage.getItem("wazuh_pass") || ""}`)}`,
+      Authorization: `Basic ${btoa(`${env.wazuhApiUser}:${password}`)}`,
     },
   });
-  if (!res.ok) throw new Error(`Wazuh auth failed: ${res.status}`);
+
+  if (!res.ok) {
+    throw new WazuhApiError({
+      code: "AUTH_FAILED",
+      message: `Wazuh authentication failed (${res.status})`,
+      status: res.status,
+      operation: "authenticate",
+    });
+  }
+
   const body = await res.json();
   _token = body.data?.token ?? null;
-  if (!_token) throw new Error("No token in auth response");
+
+  if (!_token) {
+    throw new WazuhApiError({
+      code: "RESPONSE_INVALID",
+      message: "Wazuh auth response did not include a token",
+      operation: "authenticate",
+    });
+  }
+
   return _token;
 }
 
 async function wazuhGet<T>(path: string): Promise<T> {
-  const token = await authenticate();
-  const res = await fetch(`${env.wazuhApiUrl}${path}`, {
+  let token = await authenticate();
+  let res = await fetchWithTimeout(`${env.wazuhApiUrl}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Wazuh API ${path}: ${res.status}`);
+
+  // Token may expire; retry once with a refreshed token.
+  if (res.status === 401) {
+    _token = null;
+    token = await authenticate();
+    res = await fetchWithTimeout(`${env.wazuhApiUrl}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  if (!res.ok) {
+    throw new WazuhApiError({
+      code: "API_ERROR",
+      message: `Wazuh API request failed for ${path} (${res.status})`,
+      status: res.status,
+      operation: path,
+    });
+  }
+
   const body = await res.json();
+  if (!body || typeof body !== "object" || !("data" in body)) {
+    throw new WazuhApiError({
+      code: "RESPONSE_INVALID",
+      message: `Wazuh API response shape was invalid for ${path}`,
+      operation: path,
+    });
+  }
+
   return body.data as T;
 }
 
@@ -104,10 +242,12 @@ function fallbackAgents(): WazuhAgent[] {
 /** Fetch list of registered Wazuh agents */
 export async function getAgents(): Promise<WazuhAgent[]> {
   if (!env.useLiveData) return fallbackAgents();
+
   try {
     const data = await wazuhGet<{ affected_items: WazuhAgent[] }>("/agents?select=id,name,ip,status,os,lastKeepAlive");
     return data.affected_items;
-  } catch {
+  } catch (error) {
+    setLastError(toErrorInfo(error));
     return fallbackAgents();
   }
 }
@@ -117,6 +257,7 @@ export async function getAlertSeverityCounts(): Promise<AlertSeverityCounts> {
   if (!env.useLiveData) {
     return { critical: 0, high: 0, medium: 0, low: 0 };
   }
+
   try {
     const data = await wazuhGet<{ affected_items: Array<{ rule: { level: number } }> }>(
       "/alerts?limit=500&sort=-timestamp&q=timestamp>now-24h"
@@ -130,7 +271,8 @@ export async function getAlertSeverityCounts(): Promise<AlertSeverityCounts> {
       else counts.low++;
     }
     return counts;
-  } catch {
+  } catch (error) {
+    setLastError(toErrorInfo(error));
     return { critical: 0, high: 0, medium: 0, low: 0 };
   }
 }
@@ -150,4 +292,21 @@ export async function getAgentHealth(): Promise<AgentHealth[]> {
 /** Clear cached auth token (call on logout or credential change) */
 export function clearWazuhAuth() {
   _token = null;
+}
+
+export function setWazuhPassword(password: string) {
+  sessionStorage.setItem(WAZUH_PASSWORD_KEY, password);
+  clearWazuhAuth();
+}
+
+export function hasWazuhPassword() {
+  return Boolean(getWazuhPassword());
+}
+
+export function getLastWazuhError(): WazuhApiErrorInfo | null {
+  return _lastError;
+}
+
+export function clearLastWazuhError() {
+  setLastError(null);
 }

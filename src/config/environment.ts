@@ -25,6 +25,36 @@ export const env = {
   dashboardRefreshInterval: Number(import.meta.env.VITE_DASHBOARD_REFRESH || 60000),
   agentHealthRefreshInterval: Number(import.meta.env.VITE_AGENT_HEALTH_REFRESH || 300000),
   authMonitorRefreshInterval: Number(import.meta.env.VITE_AUTH_MONITOR_REFRESH || 30000),
+
+  // Request timeout (ms)
+  wazuhRequestTimeout: Number(import.meta.env.VITE_WAZUH_REQUEST_TIMEOUT || 10000),
 } as const;
 
 export type Environment = typeof env;
+
+export function getLiveDataEnvironmentIssues(): string[] {
+  if (!env.useLiveData) return [];
+
+  const issues: string[] = [];
+
+  try {
+    // Throws if URL is invalid.
+    new URL(env.wazuhApiUrl);
+  } catch {
+    issues.push("VITE_WAZUH_API_URL is invalid");
+  }
+
+  if (!env.wazuhApiUser.trim()) {
+    issues.push("VITE_WAZUH_API_USER is empty");
+  }
+
+  if (!Number.isFinite(env.dashboardRefreshInterval) || env.dashboardRefreshInterval <= 0) {
+    issues.push("VITE_DASHBOARD_REFRESH must be a positive number");
+  }
+
+  if (!Number.isFinite(env.wazuhRequestTimeout) || env.wazuhRequestTimeout <= 0) {
+    issues.push("VITE_WAZUH_REQUEST_TIMEOUT must be a positive number");
+  }
+
+  return issues;
+}
