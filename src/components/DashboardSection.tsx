@@ -5,9 +5,9 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
 import { Shield, Users, Wifi, RefreshCw, AlertCircle } from "lucide-react";
-import { env } from "@/config/environment";
-import { getAgents, getAlertSeverityCounts } from "@/services/wazuhApi";
-import type { AlertSeverityCounts, WazuhAgent } from "@/services/wazuhApi";
+import { env, getLiveDataEnvironmentIssues } from "@/config/environment";
+import { clearLastWazuhError, getAgents, getAlertSeverityCounts, getLastWazuhError, hasWazuhPassword, setWazuhPassword } from "@/services/wazuhApi";
+import type { WazuhAgent, WazuhApiErrorInfo } from "@/services/wazuhApi";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -16,6 +16,8 @@ interface CategoryRow { name: string; value: number; fill: string }
 interface TimelineRow { hour: string; events: number }
 interface StatCard { label: string; value: string; color: string }
 interface AgentRow { name: string; ip: string; status: "active" | "disconnected"; eps: number; uptime: string }
+interface TooltipDataPoint { color?: string; fill?: string; name: string; value: string | number }
+interface TooltipProps { active?: boolean; payload?: TooltipDataPoint[]; label?: string }
 
 // ── Fallback generators (used when SIEM is not connected) ────────────
 
@@ -76,12 +78,12 @@ const heatColor = (v: number) => {
   return "bg-severity-critical/50";
 };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-md bg-card border border-border px-3 py-2 text-xs font-mono shadow-lg">
       <p className="text-muted-foreground mb-1">{label}</p>
-      {payload.map((p: any, i: number) => (
+      {payload.map((p, i) => (
         <p key={i} style={{ color: p.color || p.fill }}>
           {p.name}: <span className="text-foreground font-semibold">{p.value}</span>
         </p>
@@ -89,6 +91,25 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     </div>
   );
 };
+
+function getConnectionMessage(error: WazuhApiErrorInfo | null): string {
+  if (!error) {
+    return `Not connected to SIEM — enable VITE_USE_LIVE_DATA=true in .env to connect to ${env.wazuhApiUrl}`;
+  }
+
+  switch (error.code) {
+    case "AUTH_MISSING":
+      return "Live data enabled, but Wazuh credentials are missing. Enter password below.";
+    case "AUTH_FAILED":
+      return "Wazuh authentication failed. Verify user/password and API access.";
+    case "TIMEOUT":
+      return `Wazuh API timed out at ${env.wazuhApiUrl}. Check connectivity or increase VITE_WAZUH_REQUEST_TIMEOUT.`;
+    case "NETWORK":
+      return `Could not reach Wazuh API at ${env.wazuhApiUrl}. Check network and TLS settings.`;
+    default:
+      return error.message;
+  }
+}
 
 const Panel = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <motion.div
@@ -113,15 +134,53 @@ const DashboardSection = () => {
   const [isLive, setIsLive] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authPassword, setAuthPassword] = useState("");
+  const [authSaved, setAuthSaved] = useState(hasWazuhPassword());
+  const [connectionError, setConnectionError] = useState<WazuhApiErrorInfo | null>(null);
+  const [envIssues, setEnvIssues] = useState<string[]>([]);
+
+  const handleSaveCredentials = () => {
+    const trimmed = authPassword.trim();
+    if (!trimmed) return;
+    setWazuhPassword(trimmed);
+    setAuthSaved(true);
+    setAuthPassword("");
+    setConnectionError(null);
+    void fetchData();
+  };
 
   const fetchData = useCallback(async () => {
     if (!env.useLiveData) return;
+
+    const issues = getLiveDataEnvironmentIssues();
+    setEnvIssues(issues);
+    if (issues.length > 0) {
+      setIsLive(false);
+      setConnectionError({
+        code: "UNKNOWN",
+        message: `Environment configuration issues: ${issues.join("; ")}`,
+      });
+      return;
+    }
+
+    if (!hasWazuhPassword()) {
+      setIsLive(false);
+      setAuthSaved(false);
+      setConnectionError({
+        code: "AUTH_MISSING",
+        message: "Wazuh password is not set. Add credentials to connect.",
+      });
+      return;
+    }
+
+    clearLastWazuhError();
     setLoading(true);
     try {
       const [counts, agents] = await Promise.all([
         getAlertSeverityCounts(),
         getAgents(),
       ]);
+      const fetchError = getLastWazuhError();
 
       setSeverityData([
         { name: "Critical", count: counts.critical, fill: "hsl(0, 72%, 51%)" },
@@ -138,10 +197,13 @@ const DashboardSection = () => {
         uptime: a.status === "active" ? "Active" : "Disconnected",
       })));
 
-      setIsLive(true);
+      setIsLive(!fetchError);
+      setAuthSaved(true);
+      setConnectionError(fetchError);
       setLastRefresh(new Date().toLocaleTimeString());
     } catch {
       setIsLive(false);
+      setConnectionError(getLastWazuhError());
     } finally {
       setLoading(false);
     }
@@ -175,11 +237,17 @@ const DashboardSection = () => {
           <p className="text-[10px] font-mono text-foreground/80">
             {isLive
               ? `Connected to Wazuh API at ${env.wazuhApiUrl}`
-              : `Not connected to SIEM — enable VITE_USE_LIVE_DATA=true in .env to connect to ${env.wazuhApiUrl}`
+              : getConnectionMessage(connectionError)
             }
           </p>
           {lastRefresh && (
             <p className="text-[9px] font-mono text-muted-foreground">Last refresh: {lastRefresh}</p>
+          )}
+          {!isLive && connectionError?.status && (
+            <p className="text-[9px] font-mono text-muted-foreground">HTTP status: {connectionError.status}</p>
+          )}
+          {!isLive && envIssues.length > 0 && (
+            <p className="text-[9px] font-mono text-severity-medium">{envIssues.join(" | ")}</p>
           )}
         </div>
         {env.useLiveData && (
@@ -192,6 +260,31 @@ const DashboardSection = () => {
           </button>
         )}
       </div>
+
+      {env.useLiveData && !isLive && (
+        <div className="rounded-lg border border-border bg-card/60 p-3">
+          <p className="text-[10px] font-mono text-muted-foreground mb-2">
+            Wazuh API User: <span className="text-foreground">{env.wazuhApiUser}</span>
+            {authSaved ? " (credentials saved in this browser session)" : ""}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="password"
+              placeholder="Enter Wazuh API password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              className="flex-1 h-9 rounded-md bg-background border border-border px-3 text-xs font-mono outline-none focus:border-primary"
+            />
+            <button
+              onClick={handleSaveCredentials}
+              disabled={loading || authPassword.trim().length === 0}
+              className="h-9 px-3 rounded-md bg-primary/15 border border-primary/30 text-primary text-xs font-mono hover:bg-primary/20 disabled:opacity-50"
+            >
+              Save & Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Security Overview */}
       <div>
