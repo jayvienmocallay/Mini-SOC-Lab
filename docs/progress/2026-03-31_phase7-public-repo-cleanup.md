@@ -32,16 +32,19 @@ $ git status --short
 D  bun.lock
 D  bun.lockb
 M  .gitignore
+
+$ git push origin main
+Success (main updated on remote)
 ```
 
 ## Risks / Notes
 
-- This removes Bun lockfiles from repository state, but they are only removed from GitHub after the cleanup commit is pushed.
+- Push output indicates repository moved notice to `https://github.com/jayvienmocallay/Mini-SOC-Lab.git`; current push still succeeded via old remote URL.
 - Existing unrelated modified files remain in working tree and were not reverted.
 
 ## Next Steps
 
-- Commit and push cleanup changes so Bun lockfiles are removed from the public GitHub branch.
+- Optional: update `origin` remote URL to new repository location.
 - Continue with next implementation phase only after explicit confirmation.
 
 ## Checklist
