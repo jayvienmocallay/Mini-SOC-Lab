@@ -34,3 +34,6 @@ bun.lockb
 
 # Claude Code
 .claude/
+
+# Local-only progress logs
+docs/progress/
