@@ -1,188 +1,114 @@
-# Mini SOC Lab
+# MINI SOC LAB
 
-**Blue Team Detection & Response Platform** -- SRS-SOC-2026-001 v1.0
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF)
+![SIEM](https://img.shields.io/badge/SIEM-Wazuh%204.x-0B3D91)
+![Package Manager](https://img.shields.io/badge/Package-npm-CB3837)
 
-A production-ready, interactive Software Requirements Specification (SRS) viewer and deployment toolkit for a self-contained, virtualized Security Operations Center home lab. Designed for Blue Team practitioners to practice log ingestion, detection engineering, threat hunting, and incident response workflows.
+Blue Team Detection & Response Platform -- SRS-SOC-2026-001 v1.0
 
-## Tech Stack
+Interactive SOC home-lab platform for detection engineering, log analysis, and incident response training.
+Built for hands-on learning with realistic telemetry, deployable rules, and guided workflows.
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | React 18 + TypeScript |
-| Build Tool | Vite 5 |
-| Styling | Tailwind CSS 3 + shadcn/ui (Radix primitives) |
-| Animations | Framer Motion |
-| Charts | Recharts |
-| Routing | React Router DOM 6 |
-| State | React Query, localStorage persistence |
-| SIEM Integration | Wazuh 4.x REST API (JWT auth) |
-| Package Manager | npm |
+## What It Does
 
-## Features
+- Provides a full SRS-style SOC walkthrough with interactive sections and side navigation
+- Includes 12 detection rules across 3 attack categories:
+	- Brute Force
+	- PowerShell Abuse
+	- Privilege Escalation
+- Visualizes SOC telemetry with 3 dashboard panels:
+	- Security Overview
+	- Authentication Monitor
+	- Agent Health
+- Maps detections to MITRE ATT&CK techniques with interactive coverage view
+- Ships deployable security configs:
+	- Wazuh custom rules
+	- Sysmon config (Windows)
+	- auditd rules (Linux)
+- Supports live Wazuh API data mode with fallback behavior for offline demos
+- Provides setup checklists (27 total steps) for Windows, Linux, and SIEM environments
 
-### SRS Documentation Viewer
-- Dark cybersecurity-themed UI with glassmorphism effects and animated particle background
-- Interactive side navigation with scroll-based active tracking and reading progress indicator
-- 12 detection rules across 3 attack categories with severity-striped cards and filterable search
-- Wazuh XML and Splunk SPL rule examples in terminal-styled code blocks with copy-to-clipboard and line numbers
-- VM infrastructure specs, network architecture diagram (SVG with animated connections)
-- MITRE ATT&CK coverage matrix (6 tactics, 12 techniques, interactive detail panels)
-- Security dashboard visualizations (BarChart, PieChart, AreaChart, heatmap)
-- Interactive VM setup checklists with persistent progress (localStorage)
-- Response playbooks with step-by-step terminal commands
-- Sysmon configuration viewer with event type toggles
-- Back-to-top button, reading progress bar, animated stat counters
-- Mobile-responsive layout with collapsible sidebar
-
-### Production Deployment Toolkit
-- **Wazuh detection rules** (`rules/wazuh/`) -- deployable XML rules for brute force, PowerShell abuse, and privilege escalation
-- **Sysmon configuration** (`configs/sysmon/sysmonconfig.xml`) -- production-ready config based on SwiftOnSecurity baseline
-- **auditd rules** (`configs/auditd/audit.rules`) -- Linux audit rules based on Florian Roth baseline
-- **Deployment scripts** (`scripts/`) -- automated rule deployment via SSH/WinRM
-- **Environment configuration** (`src/config/environment.ts`) -- centralized IPs, API URLs, feature flags
-- **Wazuh API service** (`src/services/wazuhApi.ts`) -- typed API client with JWT auth and graceful fallback
-- **Live data integration** -- dashboards connect to real Wazuh API when `VITE_USE_LIVE_DATA=true`
-
-## Detection Rules
-
-### Brute Force (3 rules)
-| Rule ID | Name | Severity | ATT&CK |
-|---------|------|----------|--------|
-| DET-BF-WIN-001 | Windows RDP / Local Account Brute Force | HIGH | T1110.001 |
-| DET-BF-LNX-001 | Linux SSH Brute Force | HIGH | T1110.001 |
-| DET-BF-WIN-002 | Successful Logon Following Brute Force | CRITICAL | T1110 |
-
-### PowerShell Abuse (4 rules)
-| Rule ID | Name | Severity | ATT&CK |
-|---------|------|----------|--------|
-| DET-PS-001 | Encoded PowerShell Command Execution | HIGH | T1059.001 |
-| DET-PS-002 | PowerShell Download Cradle / Fileless Attack | CRITICAL | T1059.001, T1105 |
-| DET-PS-003 | Execution Policy Bypass | MEDIUM | T1059.001, T1562.001 |
-| DET-PS-004 | AMSI Bypass Attempt | CRITICAL | T1562.001 |
-
-### Privilege Escalation (5 rules)
-| Rule ID | Name | Severity | ATT&CK |
-|---------|------|----------|--------|
-| DET-PE-WIN-001 | User Added to Local Administrators Group | CRITICAL | T1078.001 |
-| DET-PE-LNX-001 | Sudo Privilege Escalation | HIGH | T1548.003 |
-| DET-PE-LNX-002 | SUID Binary Abuse | HIGH | T1548.001 |
-| DET-PE-WIN-002 | Token Impersonation / SeDebugPrivilege | CRITICAL | T1134.001 |
-| DET-PE-WIN-003 | Scheduled Task by Non-Admin User | MEDIUM | T1053.005 |
-
-## Getting Started
+## Quick Start
 
 ```sh
-# Clone the repository
+# Clone
 git clone <repo-url>
 cd Mini-SOC-Lab
 
-# Install dependencies
+# Install
 npm install
 
-# Start development server
+# Run
 npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
 ```
 
-### Environment Configuration
+Open the app at the local Vite URL (usually http://localhost:5173).
 
-Copy `.env.example` to `.env` and configure:
+### Build + Validate
+
+```sh
+npm test
+npm run build
+npm run lint
+```
+
+## Demo Detections
+
+| Rule ID | Category | Severity | ATT&CK |
+|---|---|---|---|
+| DET-BF-WIN-001 | Brute Force | HIGH | T1110.001 |
+| DET-BF-LNX-001 | Brute Force | HIGH | T1110.001 |
+| DET-BF-WIN-002 | Brute Force | CRITICAL | T1110 |
+| DET-PS-001 | PS Abuse | HIGH | T1059.001 |
+| DET-PS-002 | PS Abuse | CRITICAL | T1059.001, T1105 |
+| DET-PS-003 | PS Abuse | MEDIUM | T1059.001, T1562.001 |
+| DET-PS-004 | PS Abuse | CRITICAL | T1562.001 |
+| DET-PE-WIN-001 | Priv Esc | CRITICAL | T1078.001 |
+| DET-PE-LNX-001 | Priv Esc | HIGH | T1548.003 |
+| DET-PE-LNX-002 | Priv Esc | HIGH | T1548.001 |
+| DET-PE-WIN-002 | Priv Esc | CRITICAL | T1134.001 |
+| DET-PE-WIN-003 | Priv Esc | MEDIUM | T1053.005 |
+
+## Learn
+
+| Module | Topic |
+|---|---|
+| 00 - Overview | Scope, architecture, and goals |
+| 01 - Infrastructure | VM topology and segmentation |
+| 02 - Collection | Sysmon, auditd, and forwarding |
+| 03 - Detection | Rule logic and ATT&CK mapping |
+| 04 - Response | Playbooks and triage workflows |
+| 05 - Validation | Test scenarios and acceptance checks |
+
+Detailed usage: [GUIDE.md](GUIDE.md)
+
+## Repository Layout
+
+- [src](src): app pages, components, services, config
+- [rules/wazuh](rules/wazuh): deployable Wazuh XML rules
+- [configs/sysmon](configs/sysmon): Sysmon configuration
+- [configs/auditd](configs/auditd): auditd rule set
+- [scripts](scripts): deployment scripts (SSH/WinRM)
+
+## Live Data Mode
+
+1. Copy env template:
 
 ```sh
 cp .env.example .env
 ```
 
-Key variables:
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_USE_LIVE_DATA` | Connect to real Wazuh API | `false` |
-| `VITE_WAZUH_API_URL` | Wazuh API endpoint | `https://192.168.56.100:55000` |
-| `VITE_SIEM_SERVER_IP` | SIEM server IP | `192.168.56.100` |
-| `VITE_DASHBOARD_REFRESH` | Dashboard auto-refresh interval (ms) | `60000` |
+2. Set:
+- `VITE_USE_LIVE_DATA=true`
+- `VITE_WAZUH_API_URL=...`
+- `VITE_WAZUH_API_USER=...`
 
-## Project Structure
+3. Restart dev server:
 
-```
-Mini-SOC-Lab/
-├── src/
-│   ├── components/
-│   │   ├── ui/                  # shadcn/ui primitives (49 components)
-│   │   ├── CodeBlock.tsx        # Terminal code display + copy + line numbers
-│   │   ├── DataTable.tsx        # Zebra-striped data tables
-│   │   ├── DashboardSection.tsx # SOC dashboards (Recharts + live API)
-│   │   ├── DetectionCard.tsx    # Severity-striped detection rule cards
-│   │   ├── DetectionFilter.tsx  # Search + severity + category filters
-│   │   ├── HeroSection.tsx      # Animated hero with particle canvas + counters
-│   │   ├── MitreAttackMap.tsx   # Interactive ATT&CK coverage matrix
-│   │   ├── NetworkDiagram.tsx   # SVG network topology with animated flows
-│   │   ├── ResponsePlaybook.tsx # Accordion playbooks with copy-able commands
-│   │   ├── SectionHeading.tsx   # Numbered section headers with icon badges
-│   │   ├── SetupChecklist.tsx   # Persistent VM setup checklists
-│   │   ├── SeverityBadge.tsx    # Color-coded severity indicator
-│   │   ├── SideNav.tsx          # Sidebar with scroll progress + active tracking
-│   │   └── SysmonConfig.tsx     # Sysmon event type viewer
-│   ├── config/
-│   │   └── environment.ts       # Centralized environment configuration
-│   ├── services/
-│   │   ├── wazuhApi.ts          # Typed Wazuh REST API client (JWT)
-│   │   └── localStorage.ts     # Namespaced persistent state service
-│   ├── pages/
-│   │   ├── Index.tsx            # Main SRS viewer (11 sections)
-│   │   └── NotFound.tsx         # Cybersecurity-themed 404 page
-│   ├── test/
-│   │   └── components.test.tsx  # Unit tests (11 passing)
-│   ├── index.css                # Theme, glassmorphism, particles, scrollbar
-│   ├── App.tsx                  # Router and providers
-│   └── main.tsx                 # Entry point
-├── rules/
-│   └── wazuh/                   # Deployable Wazuh XML detection rules
-│       ├── brute_force.xml
-│       ├── powershell_abuse.xml
-│       └── privilege_escalation.xml
-├── configs/
-│   ├── sysmon/sysmonconfig.xml  # Production Sysmon v4.90 config
-│   └── auditd/audit.rules      # Production auditd rules
-├── scripts/
-│   ├── deploy-rules.sh          # Wazuh rule deployment (SSH)
-│   ├── deploy-sysmon.ps1        # Sysmon config deployment (WinRM)
-│   └── deploy-auditd.sh         # auditd rule deployment (SSH)
-├── docs/progress/               # Phase completion documentation
-├── .env.example                 # Environment variable template
-├── CHANGELOG.md                 # Release history
-└── tailwind.config.ts           # Theme configuration
-```
-
-## Infrastructure
-
-All VMs reside on a dedicated host-only network segment `192.168.56.0/24` with no external routing:
-
-| Host | IP Address | Role |
-|------|-----------|------|
-| SIEM Server | 192.168.56.100 | Wazuh Manager + Indexer + Dashboard |
-| Windows Endpoint | 192.168.56.10 | Attack Target / Log Source |
-| Linux Endpoint | 192.168.56.11 | Attack Target / Log Source |
-| Host Machine | 192.168.56.1 | Hypervisor Gateway |
-
-## Deployment
-
-### Deploy Wazuh Rules
 ```sh
-./scripts/deploy-rules.sh
-```
-
-### Deploy Sysmon Config (Windows endpoints)
-```powershell
-.\scripts\deploy-sysmon.ps1
-```
-
-### Deploy auditd Rules (Linux endpoints)
-```sh
-./scripts/deploy-auditd.sh
+npm run dev
 ```
 
 ## License
