@@ -72,11 +72,11 @@ vi.mock("@/config/environment", () => ({
 
 vi.mock("@/services/wazuhApi", () => ({
   clearLastWazuhError: vi.fn(),
-  getAgents: (...args: unknown[]) => getAgentsMock(...args),
-  getAlertSeverityCounts: (...args: unknown[]) => getAlertSeverityCountsMock(...args),
-  getLastWazuhError: (...args: unknown[]) => getLastWazuhErrorMock(...args),
-  hasWazuhPassword: (...args: unknown[]) => hasWazuhPasswordMock(...args),
-  setWazuhPassword: (...args: unknown[]) => setWazuhPasswordMock(...args),
+  getAgents: () => getAgentsMock(),
+  getAlertSeverityCounts: () => getAlertSeverityCountsMock(),
+  getLastWazuhError: () => getLastWazuhErrorMock(),
+  hasWazuhPassword: () => hasWazuhPasswordMock(),
+  setWazuhPassword: (password: string) => setWazuhPasswordMock(password),
 }));
 
 describe("DashboardSection", () => {
