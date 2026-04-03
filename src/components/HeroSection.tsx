@@ -28,9 +28,9 @@ const Particles = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return undefined;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return undefined;
     let animId: number;
     const particles: { x: number; y: number; vx: number; vy: number; size: number; opacity: number; life: number; maxLife: number }[] = [];
     const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
@@ -101,7 +101,12 @@ const stats = [
 ];
 
 const HeroSection = () => {
-  const counters = stats.map((s, i) => useCounter(s.value, 1200, 500 + i * 150));
+  // Keep hook calls at top level to satisfy Rules of Hooks.
+  const counter0 = useCounter(stats[0].value, 1200, 500);
+  const counter1 = useCounter(stats[1].value, 1200, 650);
+  const counter2 = useCounter(stats[2].value, 1200, 800);
+  const counter3 = useCounter(stats[3].value, 1200, 950);
+  const counters = [counter0, counter1, counter2, counter3];
 
   return (
     <section id="hero" className="relative min-h-[85vh] flex items-center justify-center overflow-hidden">
