@@ -215,6 +215,7 @@ const DashboardSection = () => {
       const interval = setInterval(fetchData, env.dashboardRefreshInterval);
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [fetchData]);
 
   return (
