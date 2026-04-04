@@ -7,6 +7,8 @@ import {
 import { Shield, Users, Wifi, RefreshCw, AlertCircle } from "lucide-react";
 import { env, getLiveDataEnvironmentIssues } from "@/config/environment";
 import { clearLastWazuhError, getAgents, getAlertSeverityCounts, getLastWazuhError, hasWazuhPassword, setWazuhPassword } from "@/services/wazuhApi";
+import { logAuditAction } from "@/services/auditLogger";
+import RuleDeploymentPanel from "@/components/RuleDeploymentPanel";
 import type { WazuhAgent, WazuhApiErrorInfo } from "@/services/wazuhApi";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -143,6 +145,7 @@ const DashboardSection = () => {
     const trimmed = authPassword.trim();
     if (!trimmed) return;
     setWazuhPassword(trimmed);
+    logAuditAction("dashboard.auth.save", `Saved Wazuh credentials for user ${env.wazuhApiUser}`);
     setAuthSaved(true);
     setAuthPassword("");
     setConnectionError(null);
@@ -253,7 +256,10 @@ const DashboardSection = () => {
         </div>
         {env.useLiveData && (
           <button
-            onClick={fetchData}
+            onClick={() => {
+              logAuditAction("dashboard.refresh", "Manual dashboard refresh requested");
+              void fetchData();
+            }}
             disabled={loading}
             className="p-1.5 rounded-md hover:bg-secondary transition-colors"
           >
@@ -261,6 +267,8 @@ const DashboardSection = () => {
           </button>
         )}
       </div>
+
+      {env.enableAgentPush && <RuleDeploymentPanel />}
 
       {env.useLiveData && !isLive && (
         <div className="rounded-lg border border-border bg-card/60 p-3">
