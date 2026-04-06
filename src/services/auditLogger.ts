@@ -6,6 +6,7 @@ const MAX_AUDIT_ENTRIES = 200;
 export type AuditActionType =
   | "dashboard.refresh"
   | "dashboard.auth.save"
+  | "dashboard.export"
   | "deployment.command.copy"
   | "deployment.runbook.view";
 
