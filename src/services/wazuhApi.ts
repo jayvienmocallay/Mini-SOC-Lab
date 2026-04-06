@@ -60,6 +60,8 @@ export interface AlertSeverityCounts {
   low: number;
 }
 
+export type AlertWindow = "24h" | "7d" | "30d";
+
 export interface AlertCategoryDistribution {
   bruteForce: number;
   psAbuse: number;
@@ -252,15 +254,16 @@ export async function getAgents(): Promise<WazuhAgent[]> {
   }
 }
 
-/** Fetch alert counts grouped by severity from the last 24h */
-export async function getAlertSeverityCounts(): Promise<AlertSeverityCounts> {
+/** Fetch alert counts grouped by severity for a selected time window */
+export async function getAlertSeverityCounts(window: AlertWindow = "24h"): Promise<AlertSeverityCounts> {
   if (!env.useLiveData) {
     return { critical: 0, high: 0, medium: 0, low: 0 };
   }
 
   try {
+    const queryWindow = `now-${window}`;
     const data = await wazuhGet<{ affected_items: Array<{ rule: { level: number } }> }>(
-      "/alerts?limit=500&sort=-timestamp&q=timestamp>now-24h"
+      `/alerts?limit=500&sort=-timestamp&q=timestamp>${queryWindow}`
     );
     const counts: AlertSeverityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const alert of data.affected_items) {
