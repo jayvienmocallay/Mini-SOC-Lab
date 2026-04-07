@@ -27,7 +27,6 @@ A complete guide to using the Mini SOC Lab application, from initial setup to de
 10. [Troubleshooting](#10-troubleshooting)
 
 ---
-
 ## 1. Prerequisites
 
 Before you begin, make sure you have the following installed:
