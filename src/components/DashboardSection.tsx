@@ -20,6 +20,7 @@ interface StatCard { label: string; value: string; color: string }
 interface AgentRow { name: string; ip: string; status: "active" | "disconnected"; eps: number; uptime: string }
 interface TooltipDataPoint { color?: string; fill?: string; name: string; value: string | number }
 interface TooltipProps { active?: boolean; payload?: TooltipDataPoint[]; label?: string }
+type RefreshMode = "standard" | "near-real-time";
 
 // ── Fallback generators (used when SIEM is not connected) ────────────
 
@@ -141,6 +142,12 @@ const DashboardSection = () => {
   const [connectionError, setConnectionError] = useState<WazuhApiErrorInfo | null>(null);
   const [envIssues, setEnvIssues] = useState<string[]>([]);
   const [alertWindow, setAlertWindow] = useState<AlertWindow>("24h");
+  const [refreshMode, setRefreshMode] = useState<RefreshMode>("standard");
+
+  const effectiveRefreshInterval =
+    refreshMode === "near-real-time"
+      ? env.dashboardRealtimeRefreshInterval
+      : env.dashboardRefreshInterval;
 
   const handleSaveCredentials = () => {
     const trimmed = authPassword.trim();
@@ -267,11 +274,11 @@ const DashboardSection = () => {
   useEffect(() => {
     fetchData();
     if (env.useLiveData) {
-      const interval = setInterval(fetchData, env.dashboardRefreshInterval);
+      const interval = setInterval(fetchData, effectiveRefreshInterval);
       return () => clearInterval(interval);
     }
     return undefined;
-  }, [fetchData]);
+  }, [fetchData, effectiveRefreshInterval]);
 
   return (
     <div className="space-y-8">
@@ -298,6 +305,11 @@ const DashboardSection = () => {
           </p>
           {lastRefresh && (
             <p className="text-[9px] font-mono text-muted-foreground">Last refresh: {lastRefresh}</p>
+          )}
+          {env.useLiveData && (
+            <p className="text-[9px] font-mono text-muted-foreground">
+              Polling mode: {refreshMode} ({effectiveRefreshInterval / 1000}s)
+            </p>
           )}
           {!isLive && connectionError?.status && (
             <p className="text-[9px] font-mono text-muted-foreground">HTTP status: {connectionError.status}</p>
@@ -365,6 +377,21 @@ const DashboardSection = () => {
                   className={`px-2.5 h-7 text-[10px] font-mono ${alertWindow === window ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground"}`}
                 >
                   {window}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex rounded-md border border-border overflow-hidden">
+              {(["standard", "near-real-time"] as RefreshMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setRefreshMode(mode);
+                    logAuditAction("dashboard.refresh", `Changed refresh mode to ${mode}`);
+                  }}
+                  className={`px-2.5 h-7 text-[10px] font-mono ${refreshMode === mode ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground"}`}
+                >
+                  {mode === "standard" ? "60s" : "Near-RT"}
                 </button>
               ))}
             </div>
