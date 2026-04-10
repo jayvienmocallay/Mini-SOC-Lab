@@ -23,6 +23,7 @@ export const env = {
 
   // Polling intervals (ms)
   dashboardRefreshInterval: Number(import.meta.env.VITE_DASHBOARD_REFRESH || 60000),
+  dashboardRealtimeRefreshInterval: Number(import.meta.env.VITE_DASHBOARD_REFRESH_REALTIME || 10000),
   agentHealthRefreshInterval: Number(import.meta.env.VITE_AGENT_HEALTH_REFRESH || 300000),
   authMonitorRefreshInterval: Number(import.meta.env.VITE_AUTH_MONITOR_REFRESH || 30000),
 
@@ -50,6 +51,10 @@ export function getLiveDataEnvironmentIssues(): string[] {
 
   if (!Number.isFinite(env.dashboardRefreshInterval) || env.dashboardRefreshInterval <= 0) {
     issues.push("VITE_DASHBOARD_REFRESH must be a positive number");
+  }
+
+  if (!Number.isFinite(env.dashboardRealtimeRefreshInterval) || env.dashboardRealtimeRefreshInterval <= 0) {
+    issues.push("VITE_DASHBOARD_REFRESH_REALTIME must be a positive number");
   }
 
   if (!Number.isFinite(env.wazuhRequestTimeout) || env.wazuhRequestTimeout <= 0) {
